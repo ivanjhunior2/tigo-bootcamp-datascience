@@ -55,4 +55,4 @@ Registro de decisiones no obvias, con alternativas descartadas y motivo.
 Ver detalle en [`calidad_datos.md`](./calidad_datos.md). Dos casos se documentan aquí porque afectan directamente el modelo:
 
 - `billing.customers.external_ref` vacío en el 50% de las filas: es solapamiento parcial intencional con `university.students` (no todo cliente de facturación es un estudiante). Se modela como relación opcional, no se filtra ni se completa.
-- `university.courses.department` nunca coincide con el departamento del profesor asignado: se tratan como dos atributos independientes (departamento del curso vs. departamento de origen del profesor), sin intentar reconciliarlos.
+- `university.courses.department` coincide con el departamento del profesor asignado en solo ~12% de los casos (36/300) — consistente con asignación aleatoria entre 8 categorías, no con una relación real. Se tratan como dos atributos independientes (departamento del curso vs. departamento de origen del profesor), sin intentar reconciliarlos.

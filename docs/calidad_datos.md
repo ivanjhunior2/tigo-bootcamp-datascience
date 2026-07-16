@@ -9,7 +9,7 @@ duplicadas completas.
 
 | Archivo | Hallazgo | Tratamiento propuesto (silver) |
 |---|---|---|
-| `courses.csv` | `department` del curso nunca coincide con `department` del profesor asignado (0/300 coinciden) | No es un error de join: son dos dimensiones independientes (área del curso vs. área de origen del profesor). Se conservan ambas columnas sin reconciliar. |
+| `courses.csv` | `department` del curso coincide con `department` del profesor asignado en solo 36/300 filas (~12%) — consistente con asignación aleatoria/independiente entre 8 categorías (~12.5% esperado por azar), no con una relación real entre ambos campos | No es un error de join: son dos dimensiones independientes (área del curso vs. área de origen del profesor). Se conservan ambas columnas sin reconciliar. Verificado en `notebooks/university/03_courses.ipynb`. |
 | resto de archivos | Sin nulos, sin FKs huérfanas, sin inconsistencias de formato | Solo tipado y renombrado estándar. |
 
 ## billing
@@ -18,7 +18,8 @@ duplicadas completas.
 |---|---|---|
 | `customers.csv` | `external_ref` vacío en 5000/10000 filas (50%) | Solapamiento parcial intencional con `university.students`. Se mantiene como FK opcional (nullable), no se descarta ni se imputa. |
 | `products.csv` | `active` viene como texto `True`/`False` (estilo Python) | Castear explícitamente a `BOOLEAN` en silver. |
-| `subscriptions.csv` | 783/15000 filas (~5%) con `start_date > end_date` (rango de fechas invertido); `end_date` poblado incluso en suscripciones `active` | Regla de calidad: si `status = active` y `end_date` está poblado, o si `start_date > end_date`, se marca la fila y se anula (`NULL`) `end_date` en silver, dejando el dato original visible en bronze para auditoría. Documentar el conteo de filas afectadas como métrica de calidad. |
+| `subscriptions.csv` | 783/15000 filas (5.2%) con `start_date > end_date` (rango de fechas invertido) | Regla de calidad: cuando `start_date > end_date`, se marca la fila (`_end_date_invalidated = true`) y se anula (`NULL`) `end_date` en silver, dejando el dato original visible en bronze para auditoría. Verificado en `notebooks/billing/03_subscriptions.ipynb`: 783 filas afectadas, quedan 14,217/15,000 con `end_date` válido. |
+| `subscriptions.csv` | `end_date` poblado en el 100% de las filas, por igual en **todos** los `status` (no solo `active`) | Medido en el notebook antes de asumir que era un error: al ser uniforme entre todos los status, es el diseño del campo (fecha de fin contratada, no fecha real de terminación), **no un defecto**. No se anula por esta razón — corrige la hipótesis inicial de este documento. |
 | resto de archivos | Sin nulos, sin FKs huérfanas | Solo tipado estándar. `invoice_items.line_total = quantity * unit_price` verificado consistente en el 100% de las filas. |
 
 ## crm
