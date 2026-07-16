@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+logs/
+data/parquet/*
+!data/parquet/.gitkeep
+.DS_Store
