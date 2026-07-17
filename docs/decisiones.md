@@ -106,3 +106,21 @@ Ver detalle en [`calidad_datos.md`](./calidad_datos.md). Dos casos se documentan
 **Decisión:** `gold.fact_lead` es un mart independiente, sin foreign key hacia `dim_account`, `dim_contact` ni `fact_opportunity`.
 
 **Por qué:** `leads.csv` no tiene ninguna columna `*_id` que lo conecte con `accounts`/`opportunities` en la fuente — cualquier cruce (por email o nombre, por ejemplo) sería una inferencia no garantizada por el diseño de los datos, y el README es explícito en que las relaciones se infieren solo de columnas `*_id` compartidas. Forzar ese join generaría una falsa sensación de trazabilidad (ej. "este lead se convirtió en esta oportunidad ganada") que los datos no respaldan.
+
+---
+
+## 13. Airflow ejecuta los notebooks de silver/gold vía `nbconvert`, no los reescribe como scripts
+
+**Decisión:** las tareas de `build_silver` y `build_gold` en el DAG son `PythonOperator` que corren `jupyter nbconvert --to notebook --execute --inplace <notebook>` (helper en `src/orchestration/run_notebook.py`), en vez de reimplementar la limpieza (pandas) y el modelado (SQL) como scripts `.py` separados.
+
+**Alternativa descartada:** extraer la lógica de cada notebook a funciones Python puras en `src/`, importadas tanto por el notebook (para revisión visual) como por Airflow (para producción).
+
+**Por qué:** los 18 notebooks de silver y los 4 de gold ya son la fuente de verdad, revisados y verificados manualmente dos veces cada uno. Duplicar esa lógica en scripts paralelos crea dos lugares que mantener sincronizados — con alto riesgo de que diverjan silenciosamente. Ejecutar el notebook tal cual desde Airflow garantiza que lo que corre en producción es exactamente lo mismo que se revisó en Jupyter. El costo es una imagen de Airflow más pesada (`nbconvert` + `ipykernel`) y un poco más de latencia por tarea — aceptable para este volumen de datos.
+
+---
+
+## 14. Parquet: un archivo por tabla, sin particionar
+
+**Decisión:** `src/export/export_parquet.py` exporta cada una de las 18 tablas de `gold` a un único archivo `data/parquet/gold/<tabla>.parquet`, sobreescrito en cada corrida.
+
+**Por qué:** particionar por fecha u otra columna es una optimización para volúmenes de datos mucho mayores (millones de filas, lectura distribuida). Acá la tabla más grande es 150k filas — particionar agregaría complejidad (múltiples archivos, lógica de reconciliación por partición) sin ningún beneficio de performance real.

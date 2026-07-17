@@ -13,14 +13,20 @@ x-airflow-common: &airflow-common
     WAREHOUSE_USER: ${POSTGRES_USER}
     WAREHOUSE_PASSWORD: ${POSTGRES_PASSWORD}
     DATA_ROOT: /opt/airflow/data
+    PARQUET_ROOT: /opt/airflow/data/parquet
+    NOTEBOOKS_ROOT: /opt/airflow/notebooks
   volumes:
     - ./dags:/opt/airflow/dags
     - ./sql:/opt/airflow/sql
+    - ./sql:/home/jovyan/work/sql  # los notebooks de gold hardcodean esta ruta
     - ./src:/opt/airflow/src
+    - ./src:/home/jovyan/work/src  # los notebooks hardcodean esta ruta (ver notebooks/README.md)
+    - ./notebooks:/opt/airflow/notebooks
     - ./university:/opt/airflow/data/university:ro
     - ./billing:/opt/airflow/data/billing:ro
     - ./crm:/opt/airflow/data/crm:ro
     - ./manifest.json:/opt/airflow/data/manifest.json:ro
+    - ./data/parquet:/opt/airflow/data/parquet
     - airflow_logs:/opt/airflow/logs
   depends_on:
     postgres:
@@ -97,6 +103,7 @@ services:
       WAREHOUSE_USER: ${POSTGRES_USER}
       WAREHOUSE_PASSWORD: ${POSTGRES_PASSWORD}
       DATA_ROOT: /home/jovyan/work/data
+      PARQUET_ROOT: /home/jovyan/work/data/parquet
     volumes:
       - ./notebooks:/home/jovyan/work/notebooks
       - ./sql:/home/jovyan/work/sql
@@ -105,6 +112,7 @@ services:
       - ./billing:/home/jovyan/work/data/billing:ro
       - ./crm:/home/jovyan/work/data/crm:ro
       - ./manifest.json:/home/jovyan/work/data/manifest.json:ro
+      - ./data/parquet:/home/jovyan/work/data/parquet
     ports:
       - "8888:8888"
     depends_on:
