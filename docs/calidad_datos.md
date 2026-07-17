@@ -26,7 +26,7 @@ duplicadas completas.
 
 | Archivo | Hallazgo | Tratamiento propuesto (silver) |
 |---|---|---|
-| `opportunities.csv` | 1029/3000 filas (~34%) con `close_date < created_at` | `close_date` es una fecha objetivo/estimada, no necesariamente posterior a la creación. No se trata como error; se documenta y se deja pasar tal cual, salvo si además `stage` indica que la oportunidad sigue abierta con una fecha de cierre ya pasada (posible regla de calidad adicional a definir al construir silver). |
+| `opportunities.csv` | 1029/3000 filas (~34%) con `close_date < created_at` | Medido por `stage` en `notebooks/crm/04_opportunities.ipynb`: el porcentaje es uniforme entre todos los stages (31–37%, abiertos y cerrados por igual) — no se concentra en `won`/`lost` ni en abiertos. Confirma que `close_date` es una fecha objetivo/estimada, no la fecha real de cierre. No se anula ni descarta ninguna fila; se agrega el flag `_close_date_before_created` en silver para trazabilidad. |
 | `activities.csv` | `contact_id` vacío en 5976/20000 filas (30%); `opportunity_id` vacío en 9985/20000 filas (50%) | FKs opcionales por diseño: una actividad puede no estar ligada a un contacto, a una oportunidad, a ambos o a ninguno. Se mantienen nullable, sin descartar filas. |
 | resto de archivos | Sin nulos, sin FKs huérfanas | Solo tipado estándar. |
 
@@ -36,8 +36,6 @@ duplicadas completas.
 - Los formatos de fecha son consistentes dentro de cada columna (`YYYY-MM-DD` para fechas, `YYYY-MM-DD HH:MM:SS` para timestamps), sin mezclas.
 - No se encontraron referencias huérfanas (`FK` sin `PK` correspondiente) en ninguna de las relaciones inferidas por columnas `*_id` compartidas.
 
-## Qué queda pendiente para la etapa de silver
+## Estado: todas las reglas ya implementadas en silver
 
-- Definir y aplicar las reglas de la tabla de arriba (cast de `active`, invalidación de `end_date`/`start_date` inconsistentes en `subscriptions`).
-- Decidir si `opportunities` con `close_date < created_at` y `stage` abierto amerita una regla de calidad adicional (ej. flag `is_stale_close_date`).
-- Cuantificar y registrar en esta misma tabla el número de filas afectadas por cada regla, una vez implementada, como evidencia de "detección y tratamiento explícito" pedido por el README.
+Las 18 tablas están cargadas en `silver` (ver `notebooks/README.md` para el detalle por tabla). Todas las reglas de esta tabla ya están aplicadas y verificadas con las cifras reales medidas en cada notebook — esto cumple el punto de "detección y tratamiento explícito" pedido por el README.
