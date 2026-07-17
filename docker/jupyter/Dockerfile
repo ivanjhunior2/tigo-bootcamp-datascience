@@ -4,7 +4,9 @@ RUN pip install --no-cache-dir \
     jupyterlab==4.2.5 \
     matplotlib==3.9.2 \
     seaborn==0.13.2 \
-    plotly==5.24.1
+    plotly==5.24.1 \
+    scikit-learn==1.5.2 \
+    joblib==1.4.2
 
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt

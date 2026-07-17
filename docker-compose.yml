@@ -104,10 +104,12 @@ services:
       WAREHOUSE_PASSWORD: ${POSTGRES_PASSWORD}
       DATA_ROOT: /home/jovyan/work/data
       PARQUET_ROOT: /home/jovyan/work/data/parquet
+      MODELS_ROOT: /home/jovyan/work/models
     volumes:
       - ./notebooks:/home/jovyan/work/notebooks
       - ./sql:/home/jovyan/work/sql
       - ./src:/home/jovyan/work/src
+      - ./models:/home/jovyan/work/models
       - ./university:/home/jovyan/work/data/university:ro
       - ./billing:/home/jovyan/work/data/billing:ro
       - ./crm:/home/jovyan/work/data/crm:ro
@@ -118,6 +120,28 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: docker/streamlit/Dockerfile
+    volumes:
+      - ./app:/app
+      - ./models:/app/models:ro
+    ports:
+      - "8501:8501"
+
+  spark-exercise:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    profiles:
+      - tools
+    environment:
+      PARQUET_ROOT: /app/data/parquet
+    volumes:
+      - ./src:/app/src
+      - ./data/parquet:/app/data/parquet:ro
 
 volumes:
   pgdata:

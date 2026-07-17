@@ -124,3 +124,23 @@ Ver detalle en [`calidad_datos.md`](./calidad_datos.md). Dos casos se documentan
 **Decisión:** `src/export/export_parquet.py` exporta cada una de las 18 tablas de `gold` a un único archivo `data/parquet/gold/<tabla>.parquet`, sobreescrito en cada corrida.
 
 **Por qué:** particionar por fecha u otra columna es una optimización para volúmenes de datos mucho mayores (millones de filas, lectura distribuida). Acá la tabla más grande es 150k filas — particionar agregaría complejidad (múltiples archivos, lógica de reconciliación por partición) sin ningún beneficio de performance real.
+
+---
+
+## 15. Modelos ML: se documenta un resultado negativo (AUC ≈ 0.51) en vez de forzarlo
+
+**Decisión:** los notebooks `notebooks/ml/01_churn_model.ipynb` y `02_win_model.ipynb` entrenan `RandomForestClassifier` para predecir `is_cancelled` e `is_won` respectivamente. Ambos dan **ROC-AUC ≈ 0.51** — prácticamente igual a adivinar al azar. No se ajustaron hiperparámetros ni se agregaron features adicionales para "mejorar" ese número.
+
+**Por qué:** el objetivo de un modelo es reflejar la relación real (o su ausencia) entre features y resultado, no maximizar una métrica a cualquier costo. La falta de señal es consistente con lo ya observado en `notebooks/analysis/01_insights.ipynb` — el churn variaba solo 2 puntos entre segmentos, el win rate 12 puntos entre industrias con muestras chicas por grupo — indicando que el generador sintético de datos (`manifest.json`, `seed: 42`) probablemente asignó estos resultados de forma mayormente independiente de los atributos disponibles. Forzar un AUC más alto vía *tuning* agresivo sería sobreajustar al ruido del set de test, no capturar una relación real. Se documenta el hallazgo tal cual, con el razonamiento de por qué se descartaron `status`/`stage`/`sales_cycle_days` como features (fuga de datos trivial — ver los notebooks).
+
+## 16. Streamlit no toca la base de datos, solo consume los `.joblib`
+
+**Decisión:** `app/streamlit_app.py` corre como servicio independiente, sin conexión a Postgres — carga `models/*.joblib` (pipeline + opciones válidas de cada feature, guardadas al entrenar) y arma el formulario a partir de esos metadatos.
+
+**Por qué:** el caso de uso es "predicción en vivo con un modelo ya entrenado", no explorar datos — no hay necesidad real de una dependencia a la base de datos, y evitarla simplifica el servicio (menos configuración, arranca más rápido, no depende de que Postgres esté sano).
+
+## 17. Spark: imagen separada, ejercicio puntual, no reemplaza el pipeline
+
+**Decisión:** `docker/spark/Dockerfile` (con JVM vía `openjdk-17-jre-headless`, fijado sobre `python:3.11-slim-bookworm` porque la tag `slim` sin versión ya trackea Debian trixie, que no tiene ese paquete) es una imagen aparte, con un servicio `spark-exercise` marcado con `profiles: [tools]` para que no se levante con `docker compose up -d` — se corre a demanda con `docker compose run --rm spark-exercise`.
+
+**Por qué:** el pipeline real (silver en pandas, gold en SQL) ya está construido, probado y automatizado en Airflow — reemplazarlo por Spark sin una necesidad real de escala sería una migración de arquitectura injustificada. El ejercicio (`src/spark_exercise/compare_pandas_spark.py`) reimplementa una sola agregación ya validada (ingreso por categoría de producto) leyendo los mismos Parquet exportados, con pandas y con PySpark, midiendo tiempo de cada uno. Con este volumen de datos (150k filas máximo), pandas es más rápido — PySpark paga el costo fijo de arrancar una JVM que no se amortiza hasta volúmenes mucho mayores o procesamiento distribuido real. El ejercicio demuestra la capacidad de usar la herramienta, no reemplaza una decisión de arquitectura ya tomada y validada.

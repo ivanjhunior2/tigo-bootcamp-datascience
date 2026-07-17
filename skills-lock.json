@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "analytics-engineer": {
+      "source": "borghei/claude-skills",
+      "sourceType": "github",
+      "skillPath": "data-analytics/analytics-engineer/SKILL.md",
+      "computedHash": "8eeeb4bbdc2ba9d7f9394f9529adb9252b854025a930731c7b269db7f190a5e0"
+    },
+    "data-analyst": {
+      "source": "borghei/claude-skills",
+      "sourceType": "github",
+      "skillPath": "data-analytics/data-analyst/SKILL.md",
+      "computedHash": "8feaa945d777e22928bb2b1843fb08b24e53e7b8edbb653aa96b8c495bc2e023"
+    },
+    "ml-pipeline-workflow": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/machine-learning-ops/skills/ml-pipeline-workflow/SKILL.md",
+      "computedHash": "f72d6581a0d4422211378315b58096b6782976f29247be787abbe44f5f49e97c"
+    },
+    "programmatic-eda": {
+      "source": "nimrodfisher/data-analytics-skills",
+      "sourceType": "github",
+      "skillPath": "01-data-quality-validation/programmatic-eda/SKILL.md",
+      "computedHash": "272bd1a0bd8389c37493b6f9cb06db5d6cfafe4fd7eade66bef429cc97bed1fa"
+    },
+    "root-cause-investigation": {
+      "source": "nimrodfisher/data-analytics-skills",
+      "sourceType": "github",
+      "skillPath": "03-data-analysis-investigation/root-cause-investigation/SKILL.md",
+      "computedHash": "001e753ff791c6ad14af4c32b12e7420365f3f186a5b9171d82d79801950c6b9"
+    }
+  }
+}

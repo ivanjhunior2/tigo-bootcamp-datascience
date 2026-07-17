@@ -54,6 +54,33 @@ Cada notebook incluye, además de la carga y verificación de conteos, 1-2 queri
 
 **18 tablas gold** (9 dim + 9 fact), todas verificadas 1:1 contra su tabla `silver` de origen.
 
-## Después de gold
+## Automatización (Airflow) + Parquet ✅ completo
 
-Con las 3 estrellas listas: extender el DAG de Airflow para automatizar bronze→silver→gold, exportar `gold` a Parquet, y armar el notebook de análisis final con insights.
+El DAG `crm_billing_universidad_pipeline` corre las 4 etapas de punta a punta (bronze → silver → gold → export Parquet → validación), disparando los mismos notebooks vía `nbconvert` (ver `docs/decisiones.md` #13). Probado 2 veces completo, mismos resultados ambas veces (idempotencia confirmada). Los 18 `.parquet` quedan en `data/parquet/gold/`.
+
+## analysis ✅ completo — insights de negocio
+
+| Notebook | Contenido |
+|---|---|
+| [`analysis/01_insights.ipynb`](analysis/01_insights.ipynb) | Consolida las preguntas de negocio de las 3 estrellas con gráficos (paleta validada colorblind-safe) y hallazgos en texto con cifras exactas: rendimiento académico por departamento, deserción por semestre, churn por segmento, DSO por método de pago, win rate por industria, conversión de leads por canal, y el cruce cross-domain estudiante↔cliente. Termina con un resumen ejecutivo de 6 puntos, insumo directo para la presentación. |
+
+## ml ✅ completo — stretch goal, fuera del stack obligatorio del README
+
+| Notebook | Contenido |
+|---|---|
+| [`ml/01_churn_model.ipynb`](ml/01_churn_model.ipynb) | `RandomForestClassifier` sobre `fact_subscription` para predecir `is_cancelled`. Documenta qué features se excluyen por fuga de datos (`status`, `is_active`) y por qué. **Resultado: ROC-AUC ≈ 0.51** (sin señal real en los datos sintéticos) — documentado como hallazgo honesto, no forzado. Persiste `models/churn_model.joblib`. |
+| [`ml/02_win_model.ipynb`](ml/02_win_model.ipynb) | Igual patrón para `fact_opportunity` → `is_won`. Excluye `stage`, `is_lost`/`is_open`, `sales_cycle_days` (fuga de datos). **ROC-AUC ≈ 0.51**, mismo hallazgo. Persiste `models/win_model.joblib`. |
+
+Ver `docs/decisiones.md` #15 para el razonamiento completo de por qué no se fuerza el número.
+
+## Streamlit ✅ completo — interfaz de predicción en vivo
+
+`app/streamlit_app.py` (servicio Docker aparte, `localhost:8501`) carga los `.joblib` de `ml/` y expone un formulario por modelo (churn / win) que corre `predict_proba()` con lo que ingresa el usuario. No toca Postgres — ver `docs/decisiones.md` #16.
+
+## Spark vs pandas ✅ completo — ejercicio comparativo puntual
+
+`docker compose run --rm spark-exercise` corre `src/spark_exercise/compare_pandas_spark.py`: recalcula "ingreso por categoría de producto" leyendo los Parquet de `data/parquet/gold/`, una vez con pandas y otra con PySpark, comparando resultado y tiempo. No reemplaza el pipeline real — ver `docs/decisiones.md` #17.
+
+## Después de todo esto
+
+Queda pendiente la Etapa 6 del plan original (presentación ejecutiva en Power BI), pospuesta a pedido del usuario para priorizar estos stretch goals.
