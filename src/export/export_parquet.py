@@ -1,4 +1,4 @@
-"""Exporta las 18 tablas de gold a Parquet, un archivo por tabla.
+"""Exporta las 19 tablas de gold a Parquet, un archivo por tabla.
 
 Full-refresh igual que el resto del pipeline: sobreescribe el archivo en
 cada corrida (no aplica versionado ni particionado -- el volumen de datos,
@@ -23,7 +23,7 @@ GOLD_TABLES = [
     "dim_customer", "dim_product",
     "fact_invoice", "fact_invoice_item", "fact_payment", "fact_subscription",
     "dim_account", "dim_contact",
-    "fact_opportunity", "fact_activity", "fact_lead",
+    "fact_opportunity", "fact_activity", "fact_lead", "bridge_opportunity_contact",
 ]
 
 

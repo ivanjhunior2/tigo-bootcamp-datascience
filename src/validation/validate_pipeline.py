@@ -37,6 +37,7 @@ GOLD_TO_SILVER = {
     "fact_opportunity": "crm__opportunities",
     "fact_activity": "crm__activities",
     "fact_lead": "crm__leads",
+    "bridge_opportunity_contact": "crm__opportunity_contacts",
 }
 
 

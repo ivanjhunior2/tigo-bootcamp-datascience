@@ -106,3 +106,25 @@ TRUNCATE TABLE gold.fact_lead CASCADE;
 INSERT INTO gold.fact_lead
 SELECT lead_id, created_at::DATE, source, status, score, status = 'converted'
 FROM silver.crm__leads;
+
+-- ============================================================
+-- bridge_opportunity_contact: tabla puente para la relacion N:N entre
+-- fact_opportunity y dim_contact (silver.crm__opportunity_contacts, 6000
+-- filas). Sin esta tabla se perdia la trazabilidad "que contactos
+-- participaron en este deal / con que rol" -- ver docs/decisiones.md.
+-- Grano = 1 fila por (opportunity_id, contact_id); PK compuesta porque un
+-- mismo par puede repetirse si la fuente registra mas de un rol, pero en
+-- la practica cada par aparece una sola vez (ver verificacion en el notebook).
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS gold.bridge_opportunity_contact (
+    opportunity_id  TEXT NOT NULL REFERENCES gold.fact_opportunity(opportunity_id),
+    contact_id      TEXT NOT NULL REFERENCES gold.dim_contact(contact_id),
+    role            TEXT NOT NULL,
+    PRIMARY KEY (opportunity_id, contact_id)
+);
+
+TRUNCATE TABLE gold.bridge_opportunity_contact CASCADE;
+INSERT INTO gold.bridge_opportunity_contact
+SELECT opportunity_id, contact_id, role
+FROM silver.crm__opportunity_contacts;

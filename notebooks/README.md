@@ -48,15 +48,15 @@ A diferencia de silver (pandas), acá la transformación es **SQL puro** (`sql/g
 | 01 | [`gold/01_dim_date.ipynb`](gold/01_dim_date.ipynb) | `sql/gold/00_dim_date.sql` | `dim_date` (2015–2028), conformada, compartida por las 3 estrellas | — |
 | 02 | [`gold/02_estrella_academica.ipynb`](gold/02_estrella_academica.ipynb) | `sql/gold/university.sql` | `dim_student`, `dim_professor`, `dim_course`, `dim_semester`, `fact_enrollment` (con rollup de notas), `fact_grade` | dim_date |
 | 03 | [`gold/03_estrella_billing.ipynb`](gold/03_estrella_billing.ipynb) | `sql/gold/billing.sql` | `dim_customer` (bridge `student_id`), `dim_product`, `fact_invoice`, `fact_invoice_item`, `fact_payment`, `fact_subscription` | dim_date, **dim_student** (cross-domain) |
-| 04 | [`gold/04_estrella_crm.ipynb`](gold/04_estrella_crm.ipynb) | `sql/gold/crm.sql` | `dim_account`, `dim_contact`, `fact_opportunity`, `fact_activity`, `fact_lead` (mart independiente, sin FK) | dim_date |
+| 04 | [`gold/04_estrella_crm.ipynb`](gold/04_estrella_crm.ipynb) | `sql/gold/crm.sql` | `dim_account`, `dim_contact`, `fact_opportunity`, `fact_activity`, `fact_lead` (mart independiente, sin FK), `bridge_opportunity_contact` (puente N:N oportunidad↔contacto) | dim_date |
 
 Cada notebook incluye, además de la carga y verificación de conteos, 1-2 queries de ejemplo que responden una pregunta de negocio real (ingreso por producto, churn por segmento, tasa de cierre por industria, rendimiento académico por departamento, conversión de leads por canal, etc.) — prueba de que la estrella sirve para analizar, no solo que carga bien.
 
-**18 tablas gold** (9 dim + 9 fact), todas verificadas 1:1 contra su tabla `silver` de origen.
+**19 tablas gold** (9 dim + 9 fact + 1 bridge), todas verificadas 1:1 contra su tabla `silver` de origen.
 
 ## Automatización (Airflow) + Parquet ✅ completo
 
-El DAG `crm_billing_universidad_pipeline` corre las 4 etapas de punta a punta (bronze → silver → gold → export Parquet → validación), disparando los mismos notebooks vía `nbconvert` (ver `docs/decisiones.md` #13). Probado 2 veces completo, mismos resultados ambas veces (idempotencia confirmada). Los 18 `.parquet` quedan en `data/parquet/gold/`.
+El DAG `crm_billing_universidad_pipeline` corre las 4 etapas de punta a punta (bronze → silver → gold → export Parquet → validación), disparando los mismos notebooks vía `nbconvert` (ver `docs/decisiones.md` #13). Probado 2 veces completo, mismos resultados ambas veces (idempotencia confirmada). Los 19 `.parquet` quedan en `data/parquet/gold/`.
 
 ## analysis ✅ completo — insights de negocio
 
