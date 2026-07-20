@@ -1,10 +1,3 @@
-"""Carga los CSV crudos de un dominio a bronze.<domain>__<table> (full-refresh).
-
-Cada corrida trunca y recarga las tablas del dominio desde los CSV fuente,
-que son estaticos: esto hace la ingesta idempotente sin necesidad de
-deduplicar. Todas las columnas se cargan como TEXT (ver sql/bronze/*.sql);
-tipado y limpieza son responsabilidad de silver.
-"""
 import argparse
 import io
 import json
@@ -16,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from utils.db import get_psycopg2_connection  # noqa: E402
+from utils.db import get_psycopg2_connection 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", str(REPO_ROOT)))

@@ -50,6 +50,7 @@ GOLD_NOTEBOOKS = [
     "02_estrella_academica.ipynb",
     "03_estrella_billing.ipynb",
     "04_estrella_crm.ipynb",
+    "05_kpi_views.ipynb",
 ]
 
 

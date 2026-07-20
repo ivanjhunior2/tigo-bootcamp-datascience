@@ -18,9 +18,9 @@ x-airflow-common: &airflow-common
   volumes:
     - ./dags:/opt/airflow/dags
     - ./sql:/opt/airflow/sql
-    - ./sql:/home/jovyan/work/sql  # los notebooks de gold hardcodean esta ruta
+    - ./sql:/home/jovyan/work/sql  
     - ./src:/opt/airflow/src
-    - ./src:/home/jovyan/work/src  # los notebooks hardcodean esta ruta (ver notebooks/README.md)
+    - ./src:/home/jovyan/work/src 
     - ./notebooks:/opt/airflow/notebooks
     - ./university:/opt/airflow/data/university:ro
     - ./billing:/opt/airflow/data/billing:ro

@@ -41,7 +41,7 @@ Un notebook por tabla, organizado en subcarpetas por dominio. Cada uno sigue el 
 
 ## gold ✅ completo — 3 estrellas en SQL puro
 
-A diferencia de silver (pandas), acá la transformación es **SQL puro** (`sql/gold/*.sql`) — el notebook solo lee el archivo, lo ejecuta contra Postgres y muestra los resultados con pandas. Gold sí tiene foreign keys reales entre tablas (a diferencia de bronze/silver), así que **el orden de ejecución es obligatorio**: `01` → `02` → `03` → `04` (ver [`docs/decisiones.md`](../docs/decisiones.md) #9 — `TRUNCATE ... CASCADE` y por qué importa el orden).
+A diferencia de silver (pandas), acá la transformación es **SQL puro** (`sql/gold/*.sql`) — el notebook solo lee el archivo, lo ejecuta contra Postgres y muestra los resultados con pandas. Gold sí tiene foreign keys reales entre tablas (a diferencia de bronze/silver), así que **el orden de ejecución es obligatorio**: `01` → `02` → `03` → `04` → `05` (ver [`docs/decisiones.md`](../docs/decisiones.md) #9 — `TRUNCATE ... CASCADE` y por qué importa el orden).
 
 | # | Notebook | SQL | Contenido | FKs a |
 |---|---|---|---|---|
@@ -49,10 +49,13 @@ A diferencia de silver (pandas), acá la transformación es **SQL puro** (`sql/g
 | 02 | [`gold/02_estrella_academica.ipynb`](gold/02_estrella_academica.ipynb) | `sql/gold/university.sql` | `dim_student`, `dim_professor`, `dim_course`, `dim_semester`, `fact_enrollment` (con rollup de notas), `fact_grade` | dim_date |
 | 03 | [`gold/03_estrella_billing.ipynb`](gold/03_estrella_billing.ipynb) | `sql/gold/billing.sql` | `dim_customer` (bridge `student_id`), `dim_product`, `fact_invoice`, `fact_invoice_item`, `fact_payment`, `fact_subscription` | dim_date, **dim_student** (cross-domain) |
 | 04 | [`gold/04_estrella_crm.ipynb`](gold/04_estrella_crm.ipynb) | `sql/gold/crm.sql` | `dim_account`, `dim_contact`, `fact_opportunity`, `fact_activity`, `fact_lead` (mart independiente, sin FK), `bridge_opportunity_contact` (puente N:N oportunidad↔contacto) | dim_date |
+| 05 | [`gold/05_kpi_views.ipynb`](gold/05_kpi_views.ipynb) | `sql/gold/kpi_views.sql` | 6 vistas (`vw_win_rate_by_industry`, `vw_churn_by_segment`, `vw_academic_performance_by_department`, `vw_lead_conversion_by_source`, `vw_dso_by_payment_method`, `vw_retention_by_student_status`) — la regla de negocio de cada KPI vive acá, no en cada herramienta de BI | fact_opportunity, fact_subscription, fact_enrollment, fact_lead, fact_payment |
 
 Cada notebook incluye, además de la carga y verificación de conteos, 1-2 queries de ejemplo que responden una pregunta de negocio real (ingreso por producto, churn por segmento, tasa de cierre por industria, rendimiento académico por departamento, conversión de leads por canal, etc.) — prueba de que la estrella sirve para analizar, no solo que carga bien.
 
-**19 tablas gold** (9 dim + 9 fact + 1 bridge), todas verificadas 1:1 contra su tabla `silver` de origen.
+**19 tablas gold** (9 dim + 9 fact + 1 bridge) + **6 vistas KPI**, todas verificadas 1:1 contra su tabla `silver` de origen o contra las cifras ya validadas en `notebooks/analysis/01_insights.ipynb`.
+
+**Power BI:** conecta directo a las vistas `gold.vw_*` en vez de reconstruir la lógica en DAX — ver `docs/decisiones.md` #19 para el bug real que esto evita (Win Rate contando oportunidades abiertas en el denominador).
 
 ## Automatización (Airflow) + Parquet ✅ completo
 
