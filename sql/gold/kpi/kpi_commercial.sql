@@ -31,3 +31,23 @@ FROM gold.fact_opportunity o
 JOIN gold.dim_account a ON a.account_id = o.account_id
 WHERE o.is_open
 GROUP BY a.industry;
+
+-- Serie de tiempo mensual -- dataset para chart "Time-series" en Superset.
+-- Oportunidades creadas vs. ganadas por mes, formato largo (una fila por
+-- mes+evento). Ver docs/decisiones.md #24.
+CREATE OR REPLACE VIEW gold.vw_opportunity_events_by_month AS
+WITH creadas AS (
+    SELECT date_trunc('month', created_date_id)::date AS month, 'creada' AS evento, count(*) AS cantidad
+    FROM gold.fact_opportunity
+    GROUP BY 1
+),
+ganadas AS (
+    SELECT date_trunc('month', close_date_id)::date AS month, 'ganada' AS evento, count(*) AS cantidad
+    FROM gold.fact_opportunity
+    WHERE is_won
+    GROUP BY 1
+)
+SELECT * FROM creadas
+UNION ALL
+SELECT * FROM ganadas
+ORDER BY month;

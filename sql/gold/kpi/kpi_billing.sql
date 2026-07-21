@@ -32,3 +32,33 @@ SELECT
 FROM gold.fact_subscription s
 JOIN gold.dim_product p ON p.product_id = s.product_id
 GROUP BY p.product_id, p.name, p.category, p.monthly_price;
+
+-- Serie de tiempo mensual -- dataset para chart "Time-series" en Superset.
+-- `month` es DATE real (date_trunc), no el TEXT year_month de dim_date, para
+-- que Superset detecte la columna temporal solo. Ver docs/decisiones.md #24.
+CREATE OR REPLACE VIEW gold.vw_revenue_by_month AS
+SELECT
+    date_trunc('month', issued_date_id)::date AS month,
+    SUM(line_total) AS ingreso
+FROM gold.fact_invoice_item
+GROUP BY 1
+ORDER BY 1;
+
+-- Altas y bajas de suscripciones por mes, en formato largo (una fila por
+-- mes+evento) para desglosar por color en un solo chart sin pivotear en SQL.
+CREATE OR REPLACE VIEW gold.vw_subscription_events_by_month AS
+WITH altas AS (
+    SELECT date_trunc('month', start_date_id)::date AS month, 'alta' AS evento, count(*) AS cantidad
+    FROM gold.fact_subscription
+    GROUP BY 1
+),
+bajas AS (
+    SELECT date_trunc('month', end_date_id)::date AS month, 'baja' AS evento, count(*) AS cantidad
+    FROM gold.fact_subscription
+    WHERE is_cancelled AND end_date_id IS NOT NULL
+    GROUP BY 1
+)
+SELECT * FROM altas
+UNION ALL
+SELECT * FROM bajas
+ORDER BY month;

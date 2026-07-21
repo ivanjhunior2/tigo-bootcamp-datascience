@@ -1,10 +1,11 @@
-"""Reconciliacion end-to-end: silver -> gold -> parquet.
+"""Reconciliacion end-to-end: bronze -> silver -> gold -> parquet.
 
 Complementa a check_bronze_counts.py (que ya valida CSV -> bronze). Para las
 tablas gold con relacion 1:1 con su tabla silver de origen, los conteos
-deben coincidir exacto (full-refresh, sin perdida ni duplicacion). El
-conteo de cada archivo Parquet se lee del metadata (sin cargar el archivo
-completo) y debe coincidir con su tabla gold de origen.
+deben coincidir exacto (full-refresh, sin perdida ni duplicacion). Bronze y
+silver tambien se comparan contra su propio parquet ahora que las 3 capas
+se exportan (ver docs/decisiones.md #25), no solo gold. El conteo de cada
+archivo Parquet se lee del metadata (sin cargar el archivo completo).
 """
 import os
 import sys
@@ -14,6 +15,7 @@ import pyarrow.parquet as pq
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.db import get_psycopg2_connection  # noqa: E402
+from export.export_parquet import RAW_TABLES  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PARQUET_ROOT = Path(os.environ.get("PARQUET_ROOT", str(REPO_ROOT / "data" / "parquet")))
@@ -46,11 +48,26 @@ def _table_count(cur, schema: str, table: str) -> int:
     return cur.fetchone()[0]
 
 
+def _check_parquet(cur, schema: str, table: str, mismatches: list) -> int:
+    """Compara el conteo de una tabla en Postgres contra su archivo parquet. Devuelve el conteo de Postgres."""
+    db_count = _table_count(cur, schema, table)
+    parquet_count = pq.read_metadata(PARQUET_ROOT / schema / f"{table}.parquet").num_rows
+    status = "OK" if parquet_count == db_count else "MISMATCH"
+    print(f"[{schema}->parquet] {table}: {schema}={db_count} parquet={parquet_count} [{status}]")
+    if parquet_count != db_count:
+        mismatches.append(f"{table} ({schema} parquet): {schema}={db_count} parquet={parquet_count}")
+    return db_count
+
+
 def validate() -> None:
     mismatches = []
     conn = get_psycopg2_connection()
     try:
         with conn.cursor() as cur:
+            for table in RAW_TABLES:
+                _check_parquet(cur, "bronze", table, mismatches)
+                _check_parquet(cur, "silver", table, mismatches)
+
             for gold_table, silver_table in GOLD_TO_SILVER.items():
                 silver_count = _table_count(cur, "silver", silver_table)
                 gold_count = _table_count(cur, "gold", gold_table)
@@ -59,20 +76,10 @@ def validate() -> None:
                 if silver_count != gold_count:
                     mismatches.append(f"{gold_table}: silver={silver_count} gold={gold_count}")
 
-                parquet_path = PARQUET_ROOT / "gold" / f"{gold_table}.parquet"
-                parquet_count = pq.read_metadata(parquet_path).num_rows
-                status = "OK" if parquet_count == gold_count else "MISMATCH"
-                print(f"[gold->parquet] {gold_table}: gold={gold_count} parquet={parquet_count} [{status}]")
-                if parquet_count != gold_count:
-                    mismatches.append(f"{gold_table} (parquet): gold={gold_count} parquet={parquet_count}")
+                _check_parquet(cur, "gold", gold_table, mismatches)
 
             # dim_date no viene de silver, se valida aparte contra su archivo parquet
-            gold_date_count = _table_count(cur, "gold", "dim_date")
-            parquet_date_count = pq.read_metadata(PARQUET_ROOT / "gold" / "dim_date.parquet").num_rows
-            status = "OK" if gold_date_count == parquet_date_count else "MISMATCH"
-            print(f"[gold->parquet] dim_date: gold={gold_date_count} parquet={parquet_date_count} [{status}]")
-            if gold_date_count != parquet_date_count:
-                mismatches.append(f"dim_date (parquet): gold={gold_date_count} parquet={parquet_date_count}")
+            _check_parquet(cur, "gold", "dim_date", mismatches)
     finally:
         conn.close()
 

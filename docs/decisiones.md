@@ -212,3 +212,26 @@ Verificado en Postgres real después de recrear las 18 tablas (`DROP ... CASCADE
 **Por qué:** Superset arma sus dashboards principalmente por UI (arrastrar/soltar), no por código — automatizar esa parte requeriría el formato de export/import de "assets" de Superset (YAML empaquetado), que es frágil entre versiones y no aporta nada que no se gane más simple aprendiendo la herramienta directamente en el navegador. A diferencia de Power BI (app de escritorio, fuera del repo, dashboards ya armados), Superset queda como alternativa web dentro del stack Docker (reproducible, versionable) — decisión explícita del usuario de mantener ambos en paralelo, no reemplazar uno por el otro.
 
 **Nota operativa:** el script de init de Postgres (`01-init-databases.sh`) solo corre en el primer arranque del volumen `pgdata`. Como el volumen ya existía de corridas previas del proyecto, la base `superset` se creó a mano una vez (`CREATE DATABASE superset OWNER dataeng;`) — en un clon nuevo del repo (volumen vacío), el script la crea automáticamente sin pasos manuales.
+
+---
+
+## 24. Vistas de serie de tiempo mensual, pensadas como datasets de Superset
+
+**Decisión:** se agregan 3 vistas nuevas — `gold.vw_revenue_by_month` y `gold.vw_subscription_events_by_month` en `sql/gold/kpi/kpi_billing.sql`, `gold.vw_opportunity_events_by_month` en `kpi_commercial.sql` — con dos convenciones deliberadas:
+
+1. **`month` es `DATE` real** (`date_trunc('month', ...)::date`), no el `TEXT year_month` de `gold.dim_date`. Superset detecta automáticamente una columna `DATE`/`TIMESTAMP` como eje temporal y habilita sus propios controles de grano y rango; un `TEXT` la trataría como categórica más.
+2. **`vw_subscription_events_by_month` y `vw_opportunity_events_by_month` van en formato largo** (una fila por `mes` + `evento`, con `cantidad`), no en columnas separadas (`altas`, `bajas`). Así un solo chart "Time-series" en Superset desglosa por color agrupando por `evento`, sin tener que pivotear en SQL ni crear un chart por serie.
+
+**Por qué:** decisión #23 ya establece que los dashboards de Superset se arman a mano en la UI, no por código — lo único automatizable con sentido es dejar los *datasets* (vistas SQL) en la forma que la herramienta consume mejor. `vw_revenue_by_month` en cambio es una sola métrica por mes (no hay evento que desglosar), así que queda en formato ancho simple.
+
+**Nota operativa:** tras correr `06_kpi_billing.ipynb` y `07_kpi_commercial.ipynb` (recrean las vistas), hay que refrescar los metadatos del dataset en Superset (⋮ → *Refresh column metadata* en cada dataset conectado a `gold.vw_*`) para que la UI detecte las columnas nuevas.
+
+---
+
+## 25. Parquet tambien para bronze y silver, no solo gold
+
+**Decisión:** `src/export/export_parquet.py` ahora exporta las 3 capas (`bronze`, `silver`, `gold`), no solo `gold` (decisión #14 original). Mismas 18 tablas en bronze/silver (`RAW_TABLES`, un nombre compartido porque el esquema de tabla es igual en ambas capas — solo cambia si las columnas están tipadas/limpias) más las 19 de gold, cada capa a su propia carpeta (`data/parquet/{bronze,silver,gold}/`). `src/validation/validate_pipeline.py` se extendió igual: ahora reconcilia bronze→parquet y silver→parquet además de silver→gold→parquet, importando `RAW_TABLES` del script de export para no duplicar la lista de tablas.
+
+**Por qué:** la fase 11 del README ("Exportación a Parquet — Persistencia de las **capas finales**") y el entregable ("Archivos Parquet — **capas** exportadas") usan plural — exportar solo gold es una lectura válida pero conservadora del requisito. Dejar evidencia Parquet de las 3 capas es más seguro de cara a la evaluación y no cuesta nada extra: el volumen sigue siendo chico (máx. 150k filas en la tabla más grande) y el patrón ya existía, solo se generalizó de una lista de tablas a tres.
+
+**No cambia:** el orden del DAG. `export_parquet_task` sigue corriendo una sola vez, después de `build_gold` — para ese punto bronze y silver ya están completos, así que no hace falta moverlo antes ni duplicar la tarea.
