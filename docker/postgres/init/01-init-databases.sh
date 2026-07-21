@@ -20,3 +20,15 @@ if [ "$DB_EXISTS" != "1" ]; then
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
         -c "CREATE DATABASE \"${AIRFLOW_DB_NAME}\" OWNER \"${POSTGRES_USER}\";"
 fi
+
+# Segunda base de datos de metadata, esta vez para Superset (sus dashboards
+# y definiciones de charts viven ahi, separados de warehouse igual que Airflow).
+SUPERSET_DB_NAME="${SUPERSET_DB:-superset}"
+
+DB_EXISTS=$(psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+    -tAc "SELECT 1 FROM pg_database WHERE datname = '${SUPERSET_DB_NAME}'")
+
+if [ "$DB_EXISTS" != "1" ]; then
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+        -c "CREATE DATABASE \"${SUPERSET_DB_NAME}\" OWNER \"${POSTGRES_USER}\";"
+fi

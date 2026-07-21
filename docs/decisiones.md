@@ -200,3 +200,15 @@ Se agregaron 5 vistas nuevas sobre las 6 que ya existían, saliendo de un banco 
 - `silver.crm__leads` — sin ninguna FK, igual que en gold (ver decisión #12): la fuente no provee columna de conexión.
 
 Verificado en Postgres real después de recrear las 18 tablas (`DROP ... CASCADE` + re-ejecución de los 18 notebooks en orden de dependencias): conteos de filas coinciden con bronze en las 18 tablas, `pg_constraint` confirma PK en las 18 y FK en cada relación esperada (incluida la compuesta), y una corrida completa del DAG de Airflow después del retrofit confirma que el patrón `TRUNCATE ... CASCADE` no rompe la orquestación.
+
+---
+
+## 23. Superset como complemento de Power BI, servicio corriendo pero dashboards armados a mano
+
+**Decisión:** se agrega `apache/superset:3.1.3` (imagen oficial, sin `Dockerfile` propio) como servicio `superset`/`superset-init` en `docker-compose.yml`, con su propia base de datos de metadata (`superset`, misma instancia de Postgres, mismo criterio que la base `airflow` — ver decisión #2 y `docker/postgres/init/01-init-databases.sh`). El `SECRET_KEY` y la URI de conexión a esa base se configuran en `docker/superset/superset_config.py`, leyendo variables de `.env`.
+
+**Alcance deliberadamente acotado:** el servicio queda levantado, con `superset-init` corriendo `db upgrade` + `fab create-admin` + `init` una sola vez, pero **no se automatiza el alta de la conexión a `warehouse` ni la creación de charts/dashboards** — eso se arma a mano desde la UI (`localhost:8088`, conectando a `postgresql://dataeng:dataeng_pw@postgres:5432/warehouse`, con las vistas `gold.vw_*` disponibles como datasets).
+
+**Por qué:** Superset arma sus dashboards principalmente por UI (arrastrar/soltar), no por código — automatizar esa parte requeriría el formato de export/import de "assets" de Superset (YAML empaquetado), que es frágil entre versiones y no aporta nada que no se gane más simple aprendiendo la herramienta directamente en el navegador. A diferencia de Power BI (app de escritorio, fuera del repo, dashboards ya armados), Superset queda como alternativa web dentro del stack Docker (reproducible, versionable) — decisión explícita del usuario de mantener ambos en paralelo, no reemplazar uno por el otro.
+
+**Nota operativa:** el script de init de Postgres (`01-init-databases.sh`) solo corre en el primer arranque del volumen `pgdata`. Como el volumen ya existía de corridas previas del proyecto, la base `superset` se creó a mano una vez (`CREATE DATABASE superset OWNER dataeng;`) — en un clon nuevo del repo (volumen vacío), el script la crea automáticamente sin pasos manuales.

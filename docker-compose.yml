@@ -131,6 +131,50 @@ services:
     ports:
       - "8501:8501"
 
+  superset-init:
+    image: apache/superset:3.1.3
+    env_file: .env
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SUPERSET_DB: ${SUPERSET_DB}
+    volumes:
+      - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        superset db upgrade
+        superset fab create-admin \
+          --username "${SUPERSET_ADMIN_USER}" \
+          --password "${SUPERSET_ADMIN_PASSWORD}" \
+          --firstname "${SUPERSET_ADMIN_FIRSTNAME}" \
+          --lastname "${SUPERSET_ADMIN_LASTNAME}" \
+          --email "${SUPERSET_ADMIN_EMAIL}" || true
+        superset init
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  superset:
+    image: apache/superset:3.1.3
+    env_file: .env
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SUPERSET_DB: ${SUPERSET_DB}
+    volumes:
+      - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py
+    ports:
+      - "8088:8088"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      superset-init:
+        condition: service_completed_successfully
+
   spark-exercise:
     build:
       context: .
