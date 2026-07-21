@@ -158,3 +158,29 @@ Ver detalle en [`calidad_datos.md`](./calidad_datos.md). Dos casos se documentan
 **Decisión:** `sql/gold/kpi_views.sql` agrega 6 vistas (`gold.vw_win_rate_by_industry`, `vw_churn_by_segment`, `vw_academic_performance_by_department`, `vw_lead_conversion_by_source`, `vw_dso_by_payment_method`, `vw_retention_by_student_status`) que encapsulan exactamente las queries de negocio ya validadas en `notebooks/analysis/01_insights.ipynb`. Se ejecutan desde `notebooks/gold/05_kpi_views.ipynb`, agregado como quinto paso del `build_gold` TaskGroup en el DAG.
 
 **Por qué:** armando el dashboard en Power BI apareció un bug real — la medida DAX de "win rate por industria" dividía por *todas* las oportunidades (incluidas las que seguían abiertas) en vez de solo las cerradas, aplanando la señal real (todas las industrias se veían iguales ~16% en vez de 57%-69%). La causa raíz no fue un error de tipeo: la regla de negocio ("solo cuentan las oportunidades cerradas") solo estaba documentada en el SQL de `04_estrella_crm.ipynb`, y se perdió al reimplementarla en DAX. Centralizar la regla en una vista de `gold` significa que cualquier herramienta de BI (Power BI, Superset, o lo que sea) lee un número ya correcto, en vez de tener que acertar la misma lógica de negocio cada una por su cuenta — elimina esta clase entera de bug hacia adelante.
+
+---
+
+## 20. `fact_invoice_item`: `customer_id`/`issued_date_id` denormalizados desde `fact_invoice`
+
+**Decisión:** `gold.fact_invoice_item` ahora incluye `customer_id` y `issued_date_id` directo (copiados de `fact_invoice` al momento de la carga), además de `invoice_id` y `product_id`. Antes solo tenía `invoice_id`+`product_id`, y había que saltar por `fact_invoice` para llegar a cliente o fecha.
+
+**Por qué:** al comparar el modelo contra una propuesta externa (`modelo_estrella_diagramas.md`), esa era la diferencia real más señalable — sin esos dos campos directos, cualquier análisis "ingreso por cliente" o "ingreso por mes" a nivel de línea de factura obligaba a un join extra contra `fact_invoice` (una conexión fact-a-fact, que es justo lo que hacía que el diagrama de billing en DBeaver no se viera como una estrella limpia). Denormalizar estos dos campos es una práctica estándar en Kimball para hechos de grano fino que cuelgan de un hecho de grano más grueso — se paga con un poco de redundancia (el dato ya existe en `fact_invoice`) a cambio de consultas más simples y de una forma de estrella más clara. Migración aplicada: se recreó la tabla completa (`DROP` + recarga), verificado que las 150,000 filas tienen `customer_id`/`issued_date_id` consistentes con su `fact_invoice` padre (0 inconsistencias).
+
+**Nota:** no se adoptó el resto de la propuesta externa (`dim_lead_source` conectada a `fact_opportunity`) porque asumía una relación que los datos fuente no respaldan — ver decisión #12.
+
+---
+
+## 21. Vistas KPI reorganizadas en 5 archivos: 3 individuales + 2 grupales
+
+**Decisión:** `sql/gold/kpi_views.sql` (6 vistas en un solo archivo) se reemplazó por 5 archivos dentro de **`sql/gold/kpi/`**: `kpi_academic.sql`, `kpi_billing.sql`, `kpi_commercial.sql` (uno por estrella, "individuales") y `kpi_cross_university_billing.sql` + `kpi_executive_summary.sql` ("grupales"). Cada uno con su notebook correspondiente dentro de **`notebooks/gold/kpi/`** (`05` a `09`), agregados en orden a `GOLD_NOTEBOOKS` en el DAG (con `task_id` saneado — sin la `/` de la subcarpeta, que Airflow no acepta en nombres de tarea).
+
+Se agregaron 5 vistas nuevas sobre las 6 que ya existían, saliendo de un banco de preguntas de negocio armado explícitamente antes de escribir SQL (documentado en la conversación, no en un archivo aparte):
+
+- `vw_academic_performance_by_course` — igual que por departamento, pero a nivel de curso puntual.
+- `vw_churn_by_product` — churn por producto/precio, no solo por segmento de cliente. Encontró variación real (22.5%-26.5% en el top 5), a diferencia de otras vistas que no mostraron señal.
+- `vw_open_pipeline_by_industry` — valor del pipeline **abierto** (no cerrado) por industria. KPI candidato desde hace tiempo, nunca antes construido.
+- `vw_failing_vs_churn` (grupal, cross university↔billing) — ¿reprobar un curso predice cancelar la suscripción? **Resultado: no** (14.3% vs 14.7% de churn, diferencia mínima) — se documenta como hallazgo negativo, no se descarta ni se maquilla.
+- `vw_executive_summary` (grupal) — una fila con el KPI principal de cada dominio (`pct_aprobados_general`, `churn_rate_general`, `ingreso_total`, `win_rate_general`, `pipeline_abierto_valor`), calculados por separado con `CROSS JOIN` de subconsultas de 1 fila cada una — **no** inventa una relación entre CRM y los otros dos dominios, solo yuxtapone números ya calculados.
+
+**Por qué esta organización:** separar en "individuales" (una estrella a la vez) vs. "grupales" (cruces reales o resúmenes) hace explícito qué vistas dependen de qué — las individuales solo necesitan su propia estrella ya construida; las grupales necesitan más de una. Evita mezclar en un solo archivo cosas con dependencias distintas, y deja claro para el lector cuáles cruzan dominios y cuáles no (evitando la confusión de asumir cruces que no existen, como pasó con la propuesta externa de `dim_lead_source`).

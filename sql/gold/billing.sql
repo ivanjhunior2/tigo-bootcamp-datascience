@@ -69,12 +69,17 @@ FROM silver.billing__invoices;
 
 -- ============================================================
 -- fact_invoice_item: grano = 1 fila por linea de factura.
+-- customer_id / issued_date_id denormalizados directo desde fact_invoice
+-- (no solo invoice_id): asi se puede filtrar/agrupar por cliente o fecha
+-- sin saltar por fact_invoice primero -- ver docs/decisiones.md #20.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS gold.fact_invoice_item (
     invoice_item_id  TEXT PRIMARY KEY,
     invoice_id       TEXT NOT NULL REFERENCES gold.fact_invoice(invoice_id),
+    customer_id      TEXT NOT NULL REFERENCES gold.dim_customer(customer_id),
     product_id       TEXT NOT NULL REFERENCES gold.dim_product(product_id),
+    issued_date_id   DATE NOT NULL REFERENCES gold.dim_date(date_day),
     quantity         INT NOT NULL,
     unit_price       NUMERIC NOT NULL,
     line_total       NUMERIC NOT NULL
@@ -82,8 +87,11 @@ CREATE TABLE IF NOT EXISTS gold.fact_invoice_item (
 
 TRUNCATE TABLE gold.fact_invoice_item CASCADE;
 INSERT INTO gold.fact_invoice_item
-SELECT invoice_item_id, invoice_id, product_id, quantity, unit_price, line_total
-FROM silver.billing__invoice_items;
+SELECT
+    ii.invoice_item_id, ii.invoice_id, i.customer_id, ii.product_id, i.issued_date_id,
+    ii.quantity, ii.unit_price, ii.line_total
+FROM silver.billing__invoice_items ii
+JOIN gold.fact_invoice i ON i.invoice_id = ii.invoice_id;
 
 -- ============================================================
 -- fact_payment: grano = 1 fila por pago. days_to_pay = dias entre

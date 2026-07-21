@@ -50,7 +50,11 @@ GOLD_NOTEBOOKS = [
     "02_estrella_academica.ipynb",
     "03_estrella_billing.ipynb",
     "04_estrella_crm.ipynb",
-    "05_kpi_views.ipynb",
+    "kpi/05_kpi_academic.ipynb",
+    "kpi/06_kpi_billing.ipynb",
+    "kpi/07_kpi_commercial.ipynb",
+    "kpi/08_kpi_cross_university_billing.ipynb",
+    "kpi/09_kpi_executive_summary.ipynb",
 ]
 
 
@@ -94,8 +98,9 @@ with DAG(
     with TaskGroup("build_gold") as build_gold:
         previous_task = None
         for notebook in GOLD_NOTEBOOKS:
+            task_name = notebook.replace(".ipynb", "").replace("/", "_")
             task = PythonOperator(
-                task_id=f"gold_{notebook.replace('.ipynb', '')}",
+                task_id=f"gold_{task_name}",
                 python_callable=run_notebook,
                 op_kwargs={"relative_path": f"gold/{notebook}"},
             )
