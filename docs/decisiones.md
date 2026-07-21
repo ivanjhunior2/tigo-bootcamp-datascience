@@ -184,3 +184,19 @@ Se agregaron 5 vistas nuevas sobre las 6 que ya existían, saliendo de un banco 
 - `vw_executive_summary` (grupal) — una fila con el KPI principal de cada dominio (`pct_aprobados_general`, `churn_rate_general`, `ingreso_total`, `win_rate_general`, `pipeline_abierto_valor`), calculados por separado con `CROSS JOIN` de subconsultas de 1 fila cada una — **no** inventa una relación entre CRM y los otros dos dominios, solo yuxtapone números ya calculados.
 
 **Por qué esta organización:** separar en "individuales" (una estrella a la vez) vs. "grupales" (cruces reales o resúmenes) hace explícito qué vistas dependen de qué — las individuales solo necesitan su propia estrella ya construida; las grupales necesitan más de una. Evita mezclar en un solo archivo cosas con dependencias distintas, y deja claro para el lector cuáles cruzan dominios y cuáles no (evitando la confusión de asumir cruces que no existen, como pasó con la propuesta externa de `dim_lead_source`).
+
+---
+
+## 22. Silver: esquema explícito en SQL (`sql/silver/`), retrofit iniciado por `students`
+
+**Decisión:** las tablas de `silver` se escribían con `df.to_sql(if_exists="replace")`, que genera tipos de columna correctos pero **sin `PRIMARY KEY`, `NOT NULL` ni `FOREIGN KEY`** — la integridad dependía solo de los `assert` de Python dentro de cada notebook, no de una restricción real en Postgres. Se agrega `sql/silver/*.sql` con el DDL explícito (mismo patrón que `sql/bronze/` y `sql/gold/`: el notebook lee el archivo y lo ejecuta), y el patrón de escritura cambia de `to_sql(if_exists="replace")` a `TRUNCATE` + `to_sql(if_exists="append")` contra la tabla ya creada con su esquema real.
+
+**La transformación (limpieza en pandas) no se mueve** — sigue 100% dentro del notebook de Jupyter, que es lo que realmente se había pedido (`docs/decisiones.md` #7 quedó desactualizada en ese punto: la limitación era "silver no se limpia con SQL", no "silver no puede tener ningún SQL").
+
+**Aplicado a las 18 tablas** de los 3 dominios (`sql/silver/university.sql`, `billing.sql`, `crm.sql` — un archivo por dominio, mismo criterio que `sql/bronze/`, no un archivo por tabla). Se probó primero en `university__students` como piloto y, verificado el patrón, se escaló al resto: `university` (6 tablas), `billing` (6 tablas), `crm` (6 tablas). Casos particulares reales:
+
+- `silver.crm__opportunity_contacts` — PK compuesta (`opportunity_id`, `contact_id`), no un `id` propio, porque es la tabla puente N:N ya existente en bronze.
+- `silver.billing__customers.external_ref`, `silver.crm__activities.contact_id`/`opportunity_id` — FKs *nullable a propósito* (relación opcional real: no todo cliente es estudiante, no toda actividad está ligada a un contacto u oportunidad), no un descuido.
+- `silver.crm__leads` — sin ninguna FK, igual que en gold (ver decisión #12): la fuente no provee columna de conexión.
+
+Verificado en Postgres real después de recrear las 18 tablas (`DROP ... CASCADE` + re-ejecución de los 18 notebooks en orden de dependencias): conteos de filas coinciden con bronze en las 18 tablas, `pg_constraint` confirma PK en las 18 y FK en cada relación esperada (incluida la compuesta), y una corrida completa del DAG de Airflow después del retrofit confirma que el patrón `TRUNCATE ... CASCADE` no rompe la orquestación.

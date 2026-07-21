@@ -1,10 +1,14 @@
 # Notebooks — índice de progreso (bronze → silver)
 
-Un notebook por tabla, organizado en subcarpetas por dominio. Cada uno sigue el mismo patrón: explorar `bronze.<tabla>` con pandas → decidir reglas de limpieza → limpiar → validar → escribir en `silver.<tabla>` con `df.to_sql(..., if_exists="replace")` → verificar en Postgres.
+Un notebook por tabla, organizado en subcarpetas por dominio. Cada uno sigue el mismo patrón: explorar `bronze.<tabla>` con pandas → decidir reglas de limpieza → limpiar → validar → ejecutar el DDL de `sql/silver/<dominio>.sql` (crea la tabla con `PRIMARY KEY`/`NOT NULL`/`FOREIGN KEY` si no existe) → `TRUNCATE ... CASCADE` → escribir en `silver.<tabla>` con `df.to_sql(..., if_exists="append")` → verificar en Postgres.
+
+La transformación (limpieza) sigue siendo 100% pandas dentro del notebook — el SQL solo declara el esquema, no limpia datos (ver [`docs/decisiones.md`](../docs/decisiones.md) #22, retrofit completado en las 18 tablas).
 
 **Orden de ejecución:** dentro de cada dominio, correr los notebooks en el orden numerado — las tablas con FK (ej. `courses` → `professors`, `enrollments` → `students`/`courses`/`semesters`) leen de `silver` las tablas de las que dependen, así que el padre tiene que estar cargado primero.
 
 ## university ✅ completo
+
+Esquema (`PRIMARY KEY`/`NOT NULL`/`FOREIGN KEY`) en [`sql/silver/university.sql`](../sql/silver/university.sql).
 
 | # | Tabla | Notebook | Filas | FKs a | Notas |
 |---|---|---|---|---|---|
@@ -17,6 +21,8 @@ Un notebook por tabla, organizado en subcarpetas por dominio. Cada uno sigue el 
 
 ## billing ✅ completo
 
+Esquema (`PRIMARY KEY`/`NOT NULL`/`FOREIGN KEY`) en [`sql/silver/billing.sql`](../sql/silver/billing.sql).
+
 | # | Tabla | Notebook | Filas | FKs a | Notas |
 |---|---|---|---|---|---|
 | 01 | customers | [`billing/01_customers.ipynb`](billing/01_customers.ipynb) | 10,000 | students (opcional, `external_ref`) | FK opcional, ~50% nulo por diseño |
@@ -27,6 +33,8 @@ Un notebook por tabla, organizado en subcarpetas por dominio. Cada uno sigue el 
 | 06 | payments | [`billing/06_payments.ipynb`](billing/06_payments.ipynb) | 80,000 | invoices | — |
 
 ## crm ✅ completo
+
+Esquema (`PRIMARY KEY`/`NOT NULL`/`FOREIGN KEY`) en [`sql/silver/crm.sql`](../sql/silver/crm.sql).
 
 | # | Tabla | Notebook | Filas | FKs a | Notas |
 |---|---|---|---|---|---|
