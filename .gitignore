@@ -6,3 +6,5 @@ logs/
 data/parquet/*
 !data/parquet/.gitkeep
 .DS_Store
+~$*.pptx
+~$*.docx
