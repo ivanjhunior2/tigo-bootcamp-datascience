@@ -72,11 +72,11 @@ Cada notebook incluye, además de la carga y verificación de conteos, 1-2 queri
 
 **19 tablas gold** (9 dim + 9 fact + 1 bridge) + **11 vistas KPI**, todas verificadas 1:1 contra su tabla `silver` de origen o contra las cifras ya validadas en `notebooks/analysis/01_insights.ipynb`.
 
-**Power BI:** conecta directo a las vistas `gold.vw_*` en vez de reconstruir la lógica en DAX — ver `docs/decisiones.md` #19 para el bug real que esto evita (Win Rate contando oportunidades abiertas en el denominador).
+**Superset** (reemplaza a Power BI, ver `docs/decisiones.md` #26): conecta directo a las vistas `gold.vw_*` en vez de reconstruir la lógica de negocio en cada chart — ver `docs/decisiones.md` #19 para el bug real que esto evita (Win Rate contando oportunidades abiertas en el denominador, encontrado originalmente armando el dashboard en Power BI).
 
 ## Automatización (Airflow) + Parquet ✅ completo
 
-El DAG `crm_billing_universidad_pipeline` corre las 4 etapas de punta a punta (bronze → silver → gold → export Parquet → validación), disparando los mismos notebooks vía `nbconvert` (ver `docs/decisiones.md` #13). Probado 2 veces completo, mismos resultados ambas veces (idempotencia confirmada). Los 19 `.parquet` quedan en `data/parquet/gold/`.
+El DAG `crm_billing_universidad_pipeline` corre las 4 etapas de punta a punta (bronze → silver → gold → export Parquet → validación), disparando los mismos notebooks vía `nbconvert` (ver `docs/decisiones.md` #13). Probado 2 veces completo, mismos resultados ambas veces (idempotencia confirmada). Parquet cubre las 3 capas (`data/parquet/{bronze,silver,gold}/`), no solo gold — ver `docs/decisiones.md` #25.
 
 ## analysis ✅ completo — insights de negocio
 
@@ -90,12 +90,13 @@ El DAG `crm_billing_universidad_pipeline` corre las 4 etapas de punta a punta (b
 |---|---|
 | [`ml/01_churn_model.ipynb`](ml/01_churn_model.ipynb) | `RandomForestClassifier` sobre `fact_subscription` para predecir `is_cancelled`. Documenta qué features se excluyen por fuga de datos (`status`, `is_active`) y por qué. **Resultado: ROC-AUC ≈ 0.51** (sin señal real en los datos sintéticos) — documentado como hallazgo honesto, no forzado. Persiste `models/churn_model.joblib`. |
 | [`ml/02_win_model.ipynb`](ml/02_win_model.ipynb) | Igual patrón para `fact_opportunity` → `is_won`. Excluye `stage`, `is_lost`/`is_open`, `sales_cycle_days` (fuga de datos). **ROC-AUC ≈ 0.51**, mismo hallazgo. Persiste `models/win_model.joblib`. |
+| [`ml/03_payment_model.ipynb`](ml/03_payment_model.ipynb) | Predice, al emitir la factura (no al pagar), si el pago llegará tarde (`gold.fact_invoice`). Pregunta del banco de WhatsApp — ver `docs/decisiones.md` #27/#28. **Resultado: ROC-AUC = 0.862** — a diferencia de churn/win, sí hay señal real, pero el 94.8% viene de `days_to_due` (el plazo de pago pactado, no el perfil del cliente): facturas a `net-7` llegan tarde 94.1% de las veces, a `net-59` solo 11.5%. Persiste `models/payment_model.joblib`. |
 
-Ver `docs/decisiones.md` #15 para el razonamiento completo de por qué no se fuerza el número.
+Ver `docs/decisiones.md` #15 para el razonamiento de por qué no se fuerza el número cuando no hay señal, y #28 para el caso donde sí la hay (y qué significa realmente).
 
 ## Streamlit ✅ completo — interfaz de predicción en vivo
 
-`app/streamlit_app.py` (servicio Docker aparte, `localhost:8501`) carga los `.joblib` de `ml/` y expone un formulario por modelo (churn / win) que corre `predict_proba()` con lo que ingresa el usuario. No toca Postgres — ver `docs/decisiones.md` #16.
+`app/streamlit_app.py` (servicio Docker aparte, `localhost:8501`) carga los `.joblib` de `ml/` y expone un formulario por modelo (churn / win / pago tardío) que corre `predict_proba()` con lo que ingresa el usuario. No toca Postgres — ver `docs/decisiones.md` #16 y #28 (tercera pestaña de pagos).
 
 ## Spark vs pandas ✅ completo — ejercicio comparativo puntual
 
@@ -103,4 +104,4 @@ Ver `docs/decisiones.md` #15 para el razonamiento completo de por qué no se fue
 
 ## Después de todo esto
 
-Queda pendiente la Etapa 6 del plan original (presentación ejecutiva en Power BI), pospuesta a pedido del usuario para priorizar estos stretch goals.
+Queda pendiente la Etapa 6 del plan original (presentación ejecutiva, ahora sobre Superset en vez de Power BI — ver `docs/decisiones.md` #26), pospuesta a pedido del usuario para priorizar estos stretch goals.

@@ -235,3 +235,43 @@ Verificado en Postgres real después de recrear las 18 tablas (`DROP ... CASCADE
 **Por qué:** la fase 11 del README ("Exportación a Parquet — Persistencia de las **capas finales**") y el entregable ("Archivos Parquet — **capas** exportadas") usan plural — exportar solo gold es una lectura válida pero conservadora del requisito. Dejar evidencia Parquet de las 3 capas es más seguro de cara a la evaluación y no cuesta nada extra: el volumen sigue siendo chico (máx. 150k filas en la tabla más grande) y el patrón ya existía, solo se generalizó de una lista de tablas a tres.
 
 **No cambia:** el orden del DAG. `export_parquet_task` sigue corriendo una sola vez, después de `build_gold` — para ese punto bronze y silver ya están completos, así que no hace falta moverlo antes ni duplicar la tarea.
+
+---
+
+## 26. Superset reemplaza a Power BI, no lo complementa
+
+**Decisión:** se reemplaza la decisión #23 en el punto donde dice que Superset es un "complemento de Power BI" con "ambos en paralelo" — a partir de ahora **Superset es la única herramienta de dashboard** del proyecto. El `.pbix` (`visualizacion.pbix`) se mantiene en el repo como evidencia histórica del hallazgo documentado en la decisión #19 (el bug real de Win Rate contando oportunidades abiertas), pero no se sigue desarrollando ni se actualiza con las vistas nuevas.
+
+**Por qué:** decisión explícita del usuario. El resto de la decisión #23 sigue vigente sin cambios — el servicio Superset corre en Docker (`localhost:8088`), conecta a `warehouse`, y los dashboards se arman a mano en la UI, no por código (ver esa decisión para el detalle de por qué no se automatiza).
+
+**Impacto:** la **presentación ejecutiva pendiente** (fase 15 del README raíz, ver `notebooks/README.md` "Después de todo esto") ahora se arma sobre Superset, no sobre Power BI.
+
+---
+
+## 27. Banco de preguntas recibido por WhatsApp: 3 nuevas vistas en `kpi_billing.sql`, 2 quedan fuera de gold
+
+**Decisión:** de las 7 preguntas recibidas ("retraso de pagos", "facturación", "promedio", "predicción de pagos y mis pagos", "ausencia o deserción de curso", "puntualidad de pagos", "plan de pagos"), 2 ya estaban cubiertas (`facturación`→`vw_revenue_by_month`/`ingreso_total`; `ausencia o deserción`→tasa de deserción por semestre en `01_insights.ipynb`; "ausencia" en sí no existe, el dataset no tiene tabla de asistencia), 1 quedó fuera de gold por ser un modelo predictivo, no una vista SQL (ver más abajo), y 3 se construyeron como vistas nuevas en `sql/gold/kpi/kpi_billing.sql`:
+
+- **`vw_overdue_invoices_by_segment`** ("retraso de pagos") — % de facturas con `status = 'overdue'` por segmento. Es un estado de la factura (mora), no la puntualidad de un pago ya hecho.
+- **`vw_payment_timeliness_by_method`** ("puntualidad de pagos") — de los pagos ya realizados, % que llegó en la fecha de vencimiento de su factura o antes (`paid_date_id <= due_date_id`), por método. Deliberadamente separada de la anterior: una mide facturas todavía impagas, la otra mide comportamiento de pago ya cerrado.
+- **`vw_revenue_by_plan`** ("plan de pagos") — se interpretó como plan/producto de suscripción (`dim_product`), no como cuotas/financiamiento (ese concepto no existe en el dataset). Ingreso total y suscripciones activas por plan, complementa a `vw_churn_by_product` (que ya mide cancelación, no ingreso ni adopción).
+
+**Nota tecnica en `vw_revenue_by_plan`:** se calculó con dos CTEs separados (`subs`, `revenue`) en vez de un JOIN directo `dim_product` → `fact_subscription` → `fact_invoice_item`. Un join directo entre dos tablas "many" al mismo grano de producto genera fan-out (cada suscripción se cruza con cada línea de factura del mismo producto) e infla `SUM(line_total)` silenciosamente. Verificado contra Postgres real: `SUM(ingreso_total)` de la vista = `34,931,806.31` = `SUM(line_total)` de `fact_invoice_item` exacto, confirma que no hay inflación.
+
+**Hallazgos reales** (corridos contra Postgres, no estimados): facturas en mora van de 9.5% (`smb`) a 11.3% (`enterprise`) — diferencia chica, y **enterprise es el peor**, lo cual es interesante porque `enterprise` tiene el churn más bajo de los 3 segmentos (ver `vw_churn_by_segment`) — mora y cancelación no van de la mano acá. Puntualidad de pago es **prácticamente idéntica entre métodos** (69.5%-70.9%), mismo patrón de "sin señal" que ya se vio en DSO por método.
+
+**Predicción de pagos:** "predicción de pagos y mis pagos" no es un KPI — es un tercer modelo de ML, construido en `notebooks/ml/03_payment_model.ipynb` (ver decisión #28). "Mis pagos" sugiere una vista personalizada por cliente, como ya hace `app/streamlit_app.py` con churn/win — pendiente de integrar a Streamlit si se quiere esa parte.
+
+---
+
+## 28. Tercer modelo ML: predicción de pago tardío al emitir la factura — acá sí hay señal real
+
+**Decisión:** `notebooks/ml/03_payment_model.ipynb` entrena un `RandomForestClassifier` (mismo patrón que churn/win: `ColumnTransformer` + `OneHotEncoder`/`StandardScaler` + `class_weight="balanced"`) sobre `gold.fact_invoice` para predecir `late` (pago tardío), usando solo features conocidas **al momento de emitir la factura** — no al pagar: `country`, `segment`, `is_student` (de `dim_customer`), `total`, `days_to_due` (de `fact_invoice`). Se excluyen a propósito todas las columnas de `fact_payment` (`method`, `days_to_pay`, `paid_date_id`) por ser información del futuro respecto al momento de la predicción.
+
+**Censura + hallazgo de calidad de datos nuevo:** se excluyen del entrenamiento, además de las 10,048 facturas `pending` (mismo criterio de censura que las suscripciones `active` en el modelo de churn — resultado todavía no ocurre), **3,533 facturas `status = 'paid'` sin ninguna fila en `fact_payment`** — un hallazgo de calidad de datos no documentado antes, encontrado al construir este modelo. Sin un pago asociado no hay forma de saber si llegó a tiempo o tarde, así que se tratan como dato incompleto, no se asume un resultado. Quedan 36,419 facturas resueltas (`overdue` o `paid` con pago real) para entrenar.
+
+**Resultado real (verificado contra Postgres, no estimado): ROC-AUC = 0.862.** A diferencia de churn/win (~0.51 cada uno), acá sí hay señal real y fuerte — pero no la que se buscaba originalmente. La importancia de features muestra que **`days_to_due` explica el 94.8%** de la predicción (`total` otro 3.9%; `country`+`segment`+`is_student` combinadas no llegan al 1%). Verificado agrupando `late` por `days_to_due` directo en SQL: facturas a `net-7` llegan tarde el 94.1% de las veces, a `net-59` solo el 11.5% — relación casi monotónica.
+
+**Por qué esto importa:** el modelo funciona, pero el hallazgo accionable no es "estos clientes son de riesgo" (el perfil del cliente no aporta señal, igual que en churn/win) — es que **el plazo de pago que el negocio le da a cada factura predice el atraso casi por sí solo**. No se retiró `days_to_due` para forzar que las variables de cliente "compitan" — el objetivo es reflejar la relación real, no producir el modelo que se esperaba encontrar. Mismo criterio de honestidad que la decisión #15, con el resultado inverso (esta vez sí hay señal, y se documenta igual de directo).
+
+**Integrado a Streamlit:** `app/streamlit_app.py` ahora tiene una tercera pestaña ("💳 Predecir pago tardío") con el mismo patrón que churn/win (`render_model_tab`, generalizado con un parámetro `auc_note` para que cada pestaña muestre su propio hallazgo honesto en vez de un texto genérico de "sin señal" que ya no aplicaba acá). Incluye una nota explícita invitando a mover el slider de `days_to_due` para ver el hallazgo real en acción. Verificado: contenedor recargó sin errores (`docker logs`, HTTP 200).

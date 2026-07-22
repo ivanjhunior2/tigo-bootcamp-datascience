@@ -62,3 +62,62 @@ SELECT * FROM altas
 UNION ALL
 SELECT * FROM bajas
 ORDER BY month;
+
+-- Pregunta del banco (WhatsApp) -- "retraso de pagos": facturas en mora
+-- (status = 'overdue' en la fuente) por segmento de cliente. Es un estado
+-- de la factura (que puede seguir sin pagar), no la puntualidad de un pago
+-- ya realizado -- ver vw_payment_timeliness_by_method para eso. Ver
+-- docs/decisiones.md #27.
+CREATE OR REPLACE VIEW gold.vw_overdue_invoices_by_segment AS
+SELECT
+    c.segment,
+    count(*) AS facturas,
+    count(*) FILTER (WHERE i.is_overdue) AS vencidas,
+    ROUND(100.0 * count(*) FILTER (WHERE i.is_overdue) / count(*), 1) AS pct_vencidas
+FROM gold.fact_invoice i
+JOIN gold.dim_customer c ON c.customer_id = i.customer_id
+GROUP BY c.segment;
+
+-- Pregunta del banco -- "puntualidad de pagos": de los pagos YA realizados,
+-- cuantos llegaron en la fecha de vencimiento de su factura o antes, vs.
+-- despues. Complementa (no reemplaza) al DSO -- DSO mide dias promedio,
+-- esto mide el corte binario a-tiempo/tarde.
+CREATE OR REPLACE VIEW gold.vw_payment_timeliness_by_method AS
+SELECT
+    p.method,
+    count(*) AS pagos,
+    count(*) FILTER (WHERE p.paid_date_id <= i.due_date_id) AS a_tiempo,
+    ROUND(100.0 * count(*) FILTER (WHERE p.paid_date_id <= i.due_date_id) / count(*), 1) AS pct_a_tiempo
+FROM gold.fact_payment p
+JOIN gold.fact_invoice i ON i.invoice_id = p.invoice_id
+GROUP BY p.method;
+
+-- Pregunta del banco -- "plan de pagos" = plan/producto de suscripcion
+-- (dim_product; el dataset no tiene concepto de cuotas/financiamiento).
+-- Complementa a vw_churn_by_product (que mide cancelacion): esta mide
+-- adopcion (suscripciones activas) e ingreso por plan. CTEs separados por
+-- subscription/invoice_item para evitar fan-out (join directo de dos
+-- tablas "many" al mismo grano de producto duplicaria filas y agrandaria
+-- el ingreso -- ver docs/decisiones.md #27).
+CREATE OR REPLACE VIEW gold.vw_revenue_by_plan AS
+WITH subs AS (
+    SELECT product_id, count(*) FILTER (WHERE is_active) AS suscripciones_activas
+    FROM gold.fact_subscription
+    GROUP BY product_id
+),
+revenue AS (
+    SELECT product_id, SUM(line_total) AS ingreso_total
+    FROM gold.fact_invoice_item
+    GROUP BY product_id
+)
+SELECT
+    p.product_id,
+    p.name,
+    p.category,
+    p.monthly_price,
+    COALESCE(subs.suscripciones_activas, 0) AS suscripciones_activas,
+    COALESCE(revenue.ingreso_total, 0) AS ingreso_total
+FROM gold.dim_product p
+LEFT JOIN subs ON subs.product_id = p.product_id
+LEFT JOIN revenue ON revenue.product_id = p.product_id
+ORDER BY ingreso_total DESC NULLS LAST;
